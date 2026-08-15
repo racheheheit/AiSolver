@@ -1,8 +1,35 @@
 const express = require("express");
-
+const crypto =require('crypto');
 const router = express.Router();
 
+function verifyGithubSignature(req) {
+    const signature = req.headers['x-hub-signature-256'];
+    if(!signature|| !req.rawBody){
+        return false;
+    }
+    const expectedSignature =
+    "sha256=" +
+    crypto
+        .createHmac("sha256", process.env.GITHUB_WEBHOOK_SECRET)
+        .update(req.rawBody)
+        .digest("hex");
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+
+    if(signatureBuffer.length !==expectedBuffer.length)return false;
+
+    return crypto.timingSafeEqual(signatureBuffer,expectedBuffer);
+
+}
 router.post("/github", (req, res) => {
+
+     if (!verifyGithubSignature(req)) {
+
+        console.log("Invalid GitHub webhook signature");
+
+        return res.sendStatus(401);
+
+    }
 
     console.log("=================================");
     console.log("GitHub webhook received!");
