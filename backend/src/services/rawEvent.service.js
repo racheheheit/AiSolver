@@ -6,7 +6,15 @@ async function saveRawEvent(req) {
     const signature = req.headers["x-hub-signature-256"];
 
     const { repository } = req.body;
+    
+    const existingEvent = await RawEvent.findOne({deliveryId});
 
+    if(existingEvent){
+        return {
+            duplicate : true,
+            event : existingEvent
+        };
+    }
     const rawEvent = new RawEvent({
         deliveryId,
 
@@ -27,7 +35,12 @@ async function saveRawEvent(req) {
         }
     });
 
-    return await rawEvent.save();
+    const savedEvent = await rawEvent.save();
+
+return {
+    duplicate: false,
+    event: savedEvent
+};
 }
 
 module.exports = {

@@ -38,21 +38,36 @@ router.post("/github", async (req, res) => {
     const { action, workflow_run, repository } = req.body;
 
     console.log("Action:", action);
-    try {
-    const rawEvent = await saveRawEvent(req);
-    console.log("RawEvent saved:", rawEvent._id);}
-     catch (error) {
-    console.error("Failed to save RawEvent:", error);
-    return res.sendStatus(500);
-     }
 
-    // We only care when the workflow has finished
+try {
+    const result = await saveRawEvent(req);
+
+    if (result.duplicate) {
+        console.log(
+            "Duplicate GitHub delivery:",
+            req.headers["x-github-delivery"]
+        );
+
+        return res.sendStatus(200);
+    }
+
+    console.log("RawEvent saved:", result.event._id);
+
+} catch (error) {
+    console.error("========== RAW EVENT ERROR ==========");
+    console.error(error);
+    console.error("Message:", error.message);
+    console.error("Stack:", error.stack);
+    console.error("====================================");
+
+    return res.sendStatus(500);
+}
+
     if (action !== "completed") {
         console.log("Workflow has not completed yet. Ignoring...");
         return res.sendStatus(200);
     }
 
-    // Extract useful information
     const failure = {
         repository: repository?.full_name,
         workflow: workflow_run?.name,
@@ -66,7 +81,6 @@ router.post("/github", async (req, res) => {
     console.log("Failure information:");
     console.log(failure);
 
-    // Check whether the completed workflow actually failed
     if (failure.conclusion === "failure") {
         console.log(" CI FAILURE DETECTED");
     } else {
