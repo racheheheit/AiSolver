@@ -1,7 +1,7 @@
 const express = require("express");
 const crypto =require('crypto');
 const router = express.Router();
-
+const { saveRawEvent } = require("../services/rawEvent.service");
 function verifyGithubSignature(req) {
     const signature = req.headers['x-hub-signature-256'];
     if(!signature|| !req.rawBody){
@@ -21,7 +21,7 @@ function verifyGithubSignature(req) {
     return crypto.timingSafeEqual(signatureBuffer,expectedBuffer);
 
 }
-router.post("/github", (req, res) => {
+router.post("/github", async (req, res) => {
 
      if (!verifyGithubSignature(req)) {
 
@@ -38,6 +38,13 @@ router.post("/github", (req, res) => {
     const { action, workflow_run, repository } = req.body;
 
     console.log("Action:", action);
+    try {
+    const rawEvent = await saveRawEvent(req);
+    console.log("RawEvent saved:", rawEvent._id);}
+     catch (error) {
+    console.error("Failed to save RawEvent:", error);
+    return res.sendStatus(500);
+     }
 
     // We only care when the workflow has finished
     if (action !== "completed") {
