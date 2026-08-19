@@ -1,34 +1,42 @@
 const express = require("express");
-const crypto =require('crypto');
+const crypto = require("crypto");
 const router = express.Router();
+
 const { saveRawEvent } = require("../services/rawEvent.service");
+const fixQueue = require("../queues/fix.queue");
+
 function verifyGithubSignature(req) {
-    const signature = req.headers['x-hub-signature-256'];
-    if(!signature|| !req.rawBody){
+    const signature = req.headers["x-hub-signature-256"];
+
+    if (!signature || !req.rawBody) {
         return false;
     }
+
     const expectedSignature =
-    "sha256=" +
-    crypto
-        .createHmac("sha256", process.env.GITHUB_WEBHOOK_SECRET)
-        .update(req.rawBody)
-        .digest("hex");
+        "sha256=" +
+        crypto
+            .createHmac("sha256", process.env.GITHUB_WEBHOOK_SECRET)
+            .update(req.rawBody)
+            .digest("hex");
+
     const signatureBuffer = Buffer.from(signature);
     const expectedBuffer = Buffer.from(expectedSignature);
 
-    if(signatureBuffer.length !==expectedBuffer.length)return false;
+    if (signatureBuffer.length !== expectedBuffer.length) {
+        return false;
+    }
 
-    return crypto.timingSafeEqual(signatureBuffer,expectedBuffer);
-
+    return crypto.timingSafeEqual(
+        signatureBuffer,
+        expectedBuffer
+    );
 }
+
 router.post("/github", async (req, res) => {
 
-     if (!verifyGithubSignature(req)) {
-
+    if (!verifyGithubSignature(req)) {
         console.log("Invalid GitHub webhook signature");
-
         return res.sendStatus(401);
-
     }
 
     console.log("=================================");
@@ -39,35 +47,36 @@ router.post("/github", async (req, res) => {
 
     console.log("Action:", action);
 
-try {
-    const result = await saveRawEvent(req);
+    let result;
 
-    if (result.duplicate) {
-        console.log(
-            "Duplicate GitHub delivery:",
-            req.headers["x-github-delivery"]
-        );
+    try {
+        result = await saveRawEvent(req);
 
-        return res.sendStatus(200);
+        if (result.duplicate) {
+            console.log(
+                "Duplicate GitHub delivery:",
+                req.headers["x-github-delivery"]
+            );
+
+            return res.sendStatus(200);
+        }
+
+        console.log("RawEvent saved:", result.event._id);
+
+    } catch (error) {
+        console.error("========== RAW EVENT ERROR ==========");
+        console.error(error);
+        console.error("Message:", error.message);
+        console.error("Stack:", error.stack);
+        console.error("====================================");
+
+        return res.sendStatus(500);
     }
-
-    console.log("RawEvent saved:", result.event._id);
-
-} catch (error) {
-    console.error("========== RAW EVENT ERROR ==========");
-    console.error(error);
-    console.error("Message:", error.message);
-    console.error("Stack:", error.stack);
-    console.error("====================================");
-
-    return res.sendStatus(500);
-}
 
     if (action !== "completed") {
         console.log("Workflow has not completed yet. Ignoring...");
         return res.sendStatus(200);
     }
-
     const failure = {
         repository: repository?.full_name,
         workflow: workflow_run?.name,
@@ -82,12 +91,29 @@ try {
     console.log(failure);
 
     if (failure.conclusion === "failure") {
-        console.log(" CI FAILURE DETECTED");
+
+        console.log("CI FAILURE DETECTED");
+
+        try {
+            await fixQueue.add("fix-job", {
+                rawEventId: result.event._id.toString()
+            });
+
+            console.log(
+                "Job added to fixQueue with rawEventId:",
+                result.event._id.toString()
+            );
+
+        } catch (error) {
+            console.error("Failed to add job to queue:", error);
+            return res.sendStatus(500);
+        }
+
     } else {
-        console.log(" Workflow completed successfully");
+        console.log("Workflow completed successfully");
     }
 
-    res.sendStatus(200);
+    return res.sendStatus(200);
 });
 
 module.exports = router;
