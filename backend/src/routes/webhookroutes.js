@@ -8,7 +8,7 @@ const fixQueue = require("../queues/fix.queue");
 function verifyGithubSignature(req) {
     const signature = req.headers["x-hub-signature-256"];
 
-    if (!signature || !req.rawBody) {
+    if (!signature || !req.rawBody || !process.env.GITHUB_WEBHOOK_SECRET) {
         return false;
     }
 

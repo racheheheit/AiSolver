@@ -36,9 +36,34 @@ function extractErrors(logs) {
     );
 }
 
+
+async function getFailureLogs(owner, repo, runId) {
+    const jobs = await getWorkflowJobs(owner, repo, runId);
+
+    const failedJob = getFailedJob(jobs);
+
+    if (!failedJob) {
+        throw new Error("No failed job found");
+    }
+
+    const logs = await getJobLogs(
+        owner,
+        repo,
+        failedJob.id
+    );
+
+    return {
+        jobId: failedJob.id,
+        jobName: failedJob.name,
+        logs
+    };
+}
+
 module.exports = {
     getWorkflowJobs,
     getFailedJob,
     getJobLogs,
-    extractErrors
+    extractErrors,
+    getFailureLogs
+
 };
