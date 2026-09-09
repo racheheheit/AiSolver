@@ -95,9 +95,19 @@ router.post("/github", async (req, res) => {
         console.log("CI FAILURE DETECTED");
 
         try {
-            await fixQueue.add("fix-job", {
-                rawEventId: result.event._id.toString()
-            });
+            await fixQueue.add(
+                "fix-job",
+                {
+                    rawEventId: result.event._id.toString()
+                },
+                {
+                    attempts: 5,
+                    backoff: {
+                        type: "exponential",
+                        delay: 5000
+                    }
+                }
+            );
 
             console.log(
                 "Job added to fixQueue with rawEventId:",

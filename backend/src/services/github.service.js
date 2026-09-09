@@ -36,7 +36,6 @@ function extractErrors(logs) {
     );
 }
 
-
 async function getFailureLogs(owner, repo, runId) {
     const jobs = await getWorkflowJobs(owner, repo, runId);
 
@@ -59,11 +58,34 @@ async function getFailureLogs(owner, repo, runId) {
     };
 }
 
+async function createPullRequest({ owner, repo, title, head, base, body }) {
+    console.log("Creating Pull Request on GitHub...");
+    console.log(`Repository: ${owner}/${repo}`);
+    console.log(`Head: ${head}, Base: ${base}`);
+
+    const response = await octokit.rest.pulls.create({
+        owner,
+        repo,
+        title,
+        head,
+        base,
+        body
+    });
+
+    console.log("Pull Request created successfully:", response.data.html_url);
+
+    return {
+        number: response.data.number,
+        url: response.data.html_url,
+        state: response.data.state
+    };
+}
+
 module.exports = {
     getWorkflowJobs,
     getFailedJob,
     getJobLogs,
     extractErrors,
-    getFailureLogs
-
+    getFailureLogs,
+    createPullRequest
 };
