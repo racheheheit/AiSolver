@@ -8,48 +8,47 @@ AMIGO is an autonomous AI coding assistant backend that listens to GitHub Action
 
 ## System Architecture & Pipeline Flow
 
-```mermaid
-flowchart TD
-    subgraph Trigger ["1. Webhook Ingestion & Job Queueing"]
+```flowchart TD
+    subgraph Trigger ["1. Webhook Ingestion and Job Queueing"]
         A1["GitHub Actions Workflow Run"] -->|CI Test Failure| A2["GitHub Webhook Event"]
-        A2 -->|POST /webhook/github| B1["Express API Server (server.js)"]
+        A2 -->|POST webhook github| B1["Express API Server - server.js"]
         B1 -->|Verify HMAC Signature| B2{"Valid Signature?"}
-        B2 -- No --> B3["Return 401 Unauthorized"]
-        B2 -- Yes --> B4["Save Raw Event to MongoDB Atlas"]
-        B4 --> B5["Enqueue Job in BullMQ (fixQueue)"]
+        B2 -->|No| B3["Return 401 Unauthorized"]
+        B2 -->|Yes| B4["Save Raw Event to MongoDB Atlas"]
+        B4 -->|Enqueue Job| B5["BullMQ fixQueue"]
     end
 
-    subgraph Preparation ["2. Workspace & Failure Log Preparation"]
-        B5 -->|Consume Job| C1["Fix Worker Engine (fix.worker.js)"]
-        C1 -->|Fetch Failure Logs via Octokit API| C2["GitHub API (getFailureLogs)"]
-        C1 -->|Create Sandboxed /tmp Directory| C3["Workspace Service (mkdtemp)"]
-        C3 -->|Git Clone Repo & Checkout Failing Commit| C4["Git Service (clone & checkout)"]
+    subgraph Preparation ["2. Workspace and Failure Log Preparation"]
+        B5 -->|Consume Job| C1["Fix Worker Engine - fix.worker.js"]
+        C1 -->|Fetch Failure Logs via Octokit| C2["GitHub API - getFailureLogs"]
+        C1 -->|Create Sandboxed Temp Directory| C3["Workspace Service - mkdtemp"]
+        C3 -->|Git Clone and Checkout Failing Commit| C4["Git Service - clone and checkout"]
         C4 -->|Extract Repository File Structure| C5["Filtered Repo Tree"]
     end
 
-    subgraph AgenticAI ["3. Gemini AI Tool-Calling & Diagnostics"]
-        C5 -->|Pass Logs & File Tree| D1["LLM Service (analyzeFailure)"]
-        D1 -->|Invoke Model (3.7 / 3.5 / 3.6 Flash)| D2["Gemini AI Model"]
-        D2 -->|Tool Call: request_files| D3["Read File Contents (Budgeted)"]
+    subgraph AgenticAI ["3. Gemini AI Tool Calling and Diagnostics"]
+        C5 -->|Pass Logs and File Tree| D1["LLM Service - analyzeFailure"]
+        D1 -->|Invoke Gemini Model| D2["Gemini AI Model"]
+        D2 -->|Tool Call request_files| D3["Read File Contents - Budgeted"]
         D3 -->|Return File Content| D2
-        D2 -->|Tool Call: propose_fix| D4["Proposed Fix (filePath, oldString, newString)"]
+        D2 -->|Tool Call propose_fix| D4["Proposed Fix"]
     end
 
-    subgraph Validation ["4. Patch Safety, Validation & Self-Correction"]
-        D4 --> E1["Patch Service (validatePatch)"]
-        E1 --> E2{"Path & Match Check"}
-        E2 -- "Path Blocked / Ambiguous / String Missing" --> E3["Send Error Feedback to Gemini"]
-        E3 -->|Self-Correction Loop| D2
-        E2 -- "Valid & Unique Match (1)" --> E4["Apply Patch to File (fs.writeFile)"]
+    subgraph Validation ["4. Patch Safety, Validation and Self Correction"]
+        D4 --> E1["Patch Service - validatePatch"]
+        E1 --> E2{"Path and Match Check"}
+        E2 -->|Path Blocked or Ambiguous| E3["Send Validation Error to Gemini"]
+        E3 -->|Self Correction Loop| D2
+        E2 -->|Valid Unique Match| E4["Apply Patch to File"]
     end
 
-    subgraph Execution ["5. Git Branching, Pushing & PR Creation"]
-        E4 --> F1["Git Service (createBranch: amigo/fix-run-id)"]
-        F1 --> F2["Git Service (commitAll: AI Explanation)"]
-        F2 --> F3["Git Service (push: Authenticated Token URL)"]
-        F3 --> F4["GitHub Service (createPullRequest)"]
+    subgraph Execution ["5. Git Branching, Pushing and PR Creation"]
+        E4 --> F1["Git Service - createBranch"]
+        F1 --> F2["Git Service - commitAll"]
+        F2 --> F3["Git Service - push"]
+        F3 --> F4["GitHub Service - createPullRequest"]
         F4 --> F5["Pull Request Opened on GitHub"]
-        F5 --> F6["Dispose Temp Workspace Directory"]
+        F5 --> F6["Dispose Temporary Workspace"]
     end
 ```
 
