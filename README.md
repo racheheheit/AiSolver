@@ -8,48 +8,32 @@ AMIGO is an autonomous AI coding assistant backend that listens to GitHub Action
 
 ## System Architecture & Pipeline Flow
 
-```flowchart TD
-    subgraph Trigger ["1. Webhook Ingestion and Job Queueing"]
-        A1["GitHub Actions Workflow Run"] -->|CI Test Failure| A2["GitHub Webhook Event"]
-        A2 -->|POST webhook github| B1["Express API Server - server.js"]
-        B1 -->|Verify HMAC Signature| B2{"Valid Signature?"}
-        B2 -->|No| B3["Return 401 Unauthorized"]
-        B2 -->|Yes| B4["Save Raw Event to MongoDB Atlas"]
-        B4 -->|Enqueue Job| B5["BullMQ fixQueue"]
-    end
+```mermaid
+graph TD
+    classDef github fill:#24292e,stroke:#333,stroke-width:1px,color:#fff;
+    classDef server fill:#1f6feb,stroke:#333,stroke-width:1px,color:#fff;
+    classDef worker fill:#238636,stroke:#333,stroke-width:1px,color:#fff;
+    classDef ai fill:#8957e5,stroke:#333,stroke-width:1px,color:#fff;
 
-    subgraph Preparation ["2. Workspace and Failure Log Preparation"]
-        B5 -->|Consume Job| C1["Fix Worker Engine - fix.worker.js"]
-        C1 -->|Fetch Failure Logs via Octokit| C2["GitHub API - getFailureLogs"]
-        C1 -->|Create Sandboxed Temp Directory| C3["Workspace Service - mkdtemp"]
-        C3 -->|Git Clone and Checkout Failing Commit| C4["Git Service - clone and checkout"]
-        C4 -->|Extract Repository File Structure| C5["Filtered Repo Tree"]
-    end
-
-    subgraph AgenticAI ["3. Gemini AI Tool Calling and Diagnostics"]
-        C5 -->|Pass Logs and File Tree| D1["LLM Service - analyzeFailure"]
-        D1 -->|Invoke Gemini Model| D2["Gemini AI Model"]
-        D2 -->|Tool Call request_files| D3["Read File Contents - Budgeted"]
-        D3 -->|Return File Content| D2
-        D2 -->|Tool Call propose_fix| D4["Proposed Fix"]
-    end
-
-    subgraph Validation ["4. Patch Safety, Validation and Self Correction"]
-        D4 --> E1["Patch Service - validatePatch"]
-        E1 --> E2{"Path and Match Check"}
-        E2 -->|Path Blocked or Ambiguous| E3["Send Validation Error to Gemini"]
-        E3 -->|Self Correction Loop| D2
-        E2 -->|Valid Unique Match| E4["Apply Patch to File"]
-    end
-
-    subgraph Execution ["5. Git Branching, Pushing and PR Creation"]
-        E4 --> F1["Git Service - createBranch"]
-        F1 --> F2["Git Service - commitAll"]
-        F2 --> F3["Git Service - push"]
-        F3 --> F4["GitHub Service - createPullRequest"]
-        F4 --> F5["Pull Request Opened on GitHub"]
-        F5 --> F6["Dispose Temporary Workspace"]
-    end
+    A[GitHub Actions Test Failure] :::github -->|1. Webhook Event| B[Express Server: server.js] :::server
+    B -->|2. Verify HMAC Signature| C{Valid Signature?} :::server
+    C -->|No| D[Return 401 Unauthorized] :::server
+    C -->|Yes| E[Save Event to MongoDB] :::server
+    E -->|3. Enqueue Job| F[BullMQ Redis Queue] :::server
+    
+    F -->|4. Consume Job| G[Fix Worker Engine: fix.worker.js] :::worker
+    G -->|5. Fetch Failure Logs| H[GitHub Octokit API] :::github
+    G -->|6. Create Sandbox & Clone| I[Workspace Service: /tmp] :::worker
+    
+    I -->|7. Analyze Logs & Repo Tree| J[LLM Service: analyzeFailure] :::ai
+    J <-->|8. Tool Loop: request_files| K[Gemini AI Model] :::ai
+    K -->|9. Propose Fix| L[Patch Service: validatePatch] :::worker
+    
+    L -->|10. Validation Error| J
+    L -->|11. Valid Patch Applied| M[Git Service: Branch & Commit] :::worker
+    M -->|12. Git Push Branch| N[GitHub Repository] :::github
+    N -->|13. Create Pull Request| O[GitHub Pull Request Opened] :::github
+    O -->|14. Cleanup| P[Dispose Workspace Directory] :::worker
 ```
 
 ---
